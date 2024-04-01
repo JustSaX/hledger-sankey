@@ -1,3 +1,4 @@
+import streamlit as st
 import sys
 import pandas as pd
 import subprocess
@@ -14,13 +15,32 @@ TOPLEVEL_ACCOUNT_CATEGORIES=['income','revenues','expenses','assets','liabilitie
 # Account name substrings for recognising account types
 ASSET_ACCOUNT_PAT     = 'assets'
 LIABILITY_ACCOUNT_PAT = 'liabilities'
-INCOME_ACCOUNT_PAT    = 'income'
+INCOME_ACCOUNT_PAT    = 'revenues' #'income'
 EXPENSE_ACCOUNT_PAT   = 'expenses'
 
-HLEDGER_EXTRA_ARGS = ''
 
-verbosity = 0
+verbosity = 1
 
+# Streamlit input
+YEARS = ['2023','2024']
+MONTHS = ['Whole year','01','02','03','04','05','06','07','08','09','10','11','12']
+CHARTS = ['Expenses Treemap','All Balances Sankey', 'Income Expenses Sankey']
+
+st.sidebar.title('Settings')
+filename=st.sidebar.text_input('Enter Filename', value='all-years.journal')
+currency=st.sidebar.text_input('Enter Currency', value='CHF')
+year=st.sidebar.selectbox('Select Year', YEARS)
+month=st.sidebar.selectbox('Select Months', MONTHS)
+depth=st.sidebar.number_input('Enter Depth', value=2, min_value=1, max_value=5)
+# charts=st.checkbox(CHARTS, label='Select Charts')
+st.sidebar.write("Charts:")
+charts = [st.sidebar.checkbox(label=chart,value=True) for chart in CHARTS]
+
+if month == 'Whole year':
+    p=year
+else:
+    p=f'{year}-{month}'
+HLEDGER_EXTRA_ARGS = f'-p {p} -{depth}'
 # Pretty print a value if global verbosity level is high enough, and return it.
 # label will be prepended if non-empty.
 def dbg(level, label, val, pretty=True):
@@ -45,7 +65,7 @@ def read_balance_report(filename,account_categories):
     # "--no-total" - ensure that we dont have a total row
     # "--tree --no-elide" - ensure that parent accounts are listed even if they dont have balance changes, to make sure that our sankey flows dont have gaps
     # "-O csv" to produce CSV output
-    command = 'hledger -f %s balance %s not:desc:opening --cost --value=then,£ --infer-value --no-total --tree --no-elide -O csv' % (filename,account_categories)
+    command = f'hledger -f %s balance %s not:desc:opening --cost --value=then,{currency} --infer-value --no-total --tree --no-elide -O csv' % (filename,account_categories)
     command += ' ' + HLEDGER_EXTRA_ARGS
     d1('command',command,0)
 
@@ -57,7 +77,7 @@ def read_balance_report(filename,account_categories):
     df = df[df[0].str.contains('|'.join(TOPLEVEL_ACCOUNT_CATEGORIES))]
 
     # Remove "£" sign from balance values, and convert them to numeric
-    df[1] = df[1].str.replace('£', '')
+    df[1] = df[1].str.replace(currency, '')
     df[1] = pd.to_numeric(df[1], errors='coerce')
 
     return df
@@ -144,9 +164,9 @@ def expenses_treemap_plot(balances_df):
    
 
 if __name__ == "__main__":
-    filename=sys.argv[1]
     
     # Sankey graph for all balances/flows
+
     all_balances_df = read_balance_report(filename, INCOME_ACCOUNT_PAT + ' ' + EXPENSE_ACCOUNT_PAT + ' ' + ASSET_ACCOUNT_PAT + ' ' + LIABILITY_ACCOUNT_PAT)
     d1('all_balances_df',all_balances_df)
 
@@ -164,14 +184,18 @@ if __name__ == "__main__":
     d2('expenses treemap plot',expenses)
 
     # Display all three graphs in a column
-    fig = make_subplots(rows=3, cols=1, specs = [[{"type": "treemap"}],[{"type": "sankey"}],[{"type": "sankey"}]] )
+    specs = [[{"type": "treemap"}],[{"type": "sankey"}],[{"type": "sankey"}]]
+    filtered_specs = [spec for spec, chart_bool in zip(specs, charts) if chart_bool]
+    fig = make_subplots(rows=len(filtered_specs), cols=1, specs=filtered_specs )
 
-    # Expenses treemap first
-    fig.add_trace(expenses.data[0], row=1, col=1)
-    # ... followed by income-to-expenses flows
-    fig.add_trace(income_expenses.data[0], row=2, col=1)
-    # ... followed by flows between all the balances
-    fig.add_trace(all_balances.data[0], row=3, col=1)
-    fig.update_layout(title_text="Cash Flows", height=2700) # 3 plots x 900 px
+    traces = [expenses.data[0],income_expenses.data[0],all_balances.data[0]]
+    filtered_traces = [trace for trace, chart_bool in zip(traces, charts) if chart_bool]
     
-    fig.show()            
+    for row,trace in enumerate(filtered_traces):
+          fig.add_trace(trace, row+1,col=1)
+        
+    height = 900 * len(filtered_traces)
+    fig.update_layout(title_text="Cash Flows", height=height) # 3 plots x 900 px
+    
+    
+    st.plotly_chart(fig)
