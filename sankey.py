@@ -28,7 +28,7 @@ CHARTS = ['Expenses Treemap','All Balances Sankey', 'Income Expenses Sankey']
 
 st.sidebar.title('Settings')
 filename=st.sidebar.text_input('Enter Filename', value='all-years.journal')
-currency=st.sidebar.text_input('Enter Currency', value='CHF')
+currency=st.sidebar.text_input('Enter Currency', value='GBP')
 year=st.sidebar.selectbox('Select Year', YEARS)
 month=st.sidebar.selectbox('Select Months', MONTHS)
 depth=st.sidebar.number_input('Enter Depth', value=2, min_value=1, max_value=5)
